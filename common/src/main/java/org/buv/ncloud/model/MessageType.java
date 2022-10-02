@@ -1,8 +1,12 @@
 package org.buv.ncloud.model;
 
 public enum MessageType {
-    LIST,
+    LIST_MESSAGE,
     FILE_REQUEST,
-    FILE,
-    UPDATE_SERVER_VIEW
+    FILE_MESSAGE,
+    UPDATE_SERVER_VIEW,
+    DELETE_REQUEST,
+    MOVE_REQUEST
+
+
 }
