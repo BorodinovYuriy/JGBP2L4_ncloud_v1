@@ -15,6 +15,7 @@ public class DaemonThreadFactory implements ThreadFactory {
         Thread thread = new Thread(r);
         thread.setName(name);
         thread.setDaemon(true);
+        System.out.println(thread.getName()+ " Thread is start!!!!!!!!");
         return thread;
     }
 }
