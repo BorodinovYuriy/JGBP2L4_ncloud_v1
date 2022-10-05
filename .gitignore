@@ -1,5 +1,6 @@
 # Project exclude paths
 .idea
+server_files
 # Project exclude paths
 /common/target/
 /server/target/

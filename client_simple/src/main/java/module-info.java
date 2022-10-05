@@ -3,6 +3,7 @@ module org.buv.ncloud.client_simple {
     requires javafx.fxml;
 
     requires org.buv.ncloud.common;
+    requires lombok;
     requires io.netty.codec;
 
 

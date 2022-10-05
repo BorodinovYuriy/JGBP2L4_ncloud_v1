@@ -22,6 +22,6 @@ public class ListMessage implements CloudMessage {
 
     @Override
     public MessageType getType() {
-        return MessageType.LIST;
+        return MessageType.LIST_MESSAGE;
     }
 }
