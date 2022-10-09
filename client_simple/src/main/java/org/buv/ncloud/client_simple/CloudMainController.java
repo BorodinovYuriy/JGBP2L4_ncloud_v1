@@ -1,19 +1,29 @@
 package org.buv.ncloud.client_simple;
 
-
-import javafx.event.EventHandler;
-import javafx.scene.control.*;
-import javafx.scene.layout.AnchorPane;
-import org.buv.ncloud.constant.Constants;
-import org.buv.ncloud.model.*;
 import io.netty.handler.codec.serialization.ObjectDecoderInputStream;
 import io.netty.handler.codec.serialization.ObjectEncoderOutputStream;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.Initializable;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.buv.ncloud.constant.Constants;
+import org.buv.ncloud.model.*;
 import org.buv.ncloud.utils.DaemonThreadFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.Socket;
 import java.net.URL;
 import java.nio.file.Files;
@@ -23,9 +33,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.ResourceBundle;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import static java.nio.file.StandardOpenOption.APPEND;
-
-
+@Slf4j
 public class CloudMainController implements Initializable {
     public ListView<String> clientView;
     public ListView<String> serverView;
@@ -36,8 +48,12 @@ public class CloudMainController implements Initializable {
     public Button renameFileOnClientButton;
     public TextField oldNameTextField;
     public Button renameFileOnServerButton;
+    public MenuItem deleteAccount;
     private String currentDirectory;
     //--------------------
+    private String login;
+    private String cuttingItem;
+    private String cuttingItemFilename;
 
     private Network<ObjectDecoderInputStream, ObjectEncoderOutputStream> network;
     
@@ -46,6 +62,10 @@ public class CloudMainController implements Initializable {
     private boolean needReadMessages = true;
 
     private DaemonThreadFactory factory;
+
+    final Lock lock = new ReentrantLock();
+
+    Label infoLabel = new Label("Введите логин и пароль!");//для окна регистрации
 
 
     private List<String> getFilesListOnClient(String directory) {
@@ -70,6 +90,8 @@ public class CloudMainController implements Initializable {
                     new ObjectDecoderInputStream(socket.getInputStream()),
                     new ObjectEncoderOutputStream(socket.getOutputStream())
             );
+            openRegistrationWindow();
+
             factory.getThread(this::readMessages, "cloud-client-read-thread")
                     .start();
 
@@ -93,20 +115,15 @@ public class CloudMainController implements Initializable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-
     }
-
     private void setCurrentDirectory(String directory) {
         currentDirectory = directory;
         fillView(clientView, getFilesListOnClient(currentDirectory));
     }
-
     public void sendCommand_downloadFileFromServer(ActionEvent actionEvent) throws IOException {
         String fileName = serverView.getSelectionModel().getSelectedItem();
         network.getOutputStream().writeObject(new FileRequest(fileName));
     }
-
     //---------------------------------------------------------------
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
@@ -116,106 +133,224 @@ public class CloudMainController implements Initializable {
         initNetwork();
         setCurrentDirectory(System.getProperty("user.home"));
         fillView(clientView, getFilesListOnClient(currentDirectory));
+        //Ивенты мыши на serverView!!!
         clientView.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
                 String selected = clientView.getSelectionModel().getSelectedItem();
                 File selectedFile = Paths.get(currentDirectory,selected).toFile();
-                /*File selectedFile = new File(currentDirectory + "/" + selected);*/
                 if (selectedFile.isDirectory()) {
                     setCurrentDirectory(String.valueOf(Paths.get(currentDirectory,selected)));
-                    /*setCurrentDirectory(currentDirectory + "/" + selected);*/
                 }
             }
         });
-        //Ивент мыши на serverView!!!
         serverView.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
                 String selected = serverView.getSelectionModel().getSelectedItem();
                 doubleClickOnServerView(selected);
             }
         });
+
         //---------ContextMenu----------
         ContextMenu contextMenu = new ContextMenu();
+
         MenuItem createDirectory = new MenuItem("create dir");
-        createDirectory.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                if(clientView.isFocused()){
-                    createDirectoryOnClient();
-                    Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
-                }
-                if(serverView.isFocused()){
-                    createDirectoryOnServer();
-                }
+            createDirectory.setOnAction(event -> {
+            if(clientView.isFocused()){
+                createDirectoryOnClient();
+                Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
+            }
+            if(serverView.isFocused()){
+                createDirectoryOnServer();
             }
         });
-
-
         MenuItem delete = new MenuItem("delete");
-        delete.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                if(clientView.isFocused()){
-                    String name = clientView.getSelectionModel().getSelectedItem();
-                    if(name != null){
-                        String filename = String.valueOf(Paths.get(currentDirectory,name));
-                        /*String filename = currentDirectory+"/"+ name;*/
-                        try {
-                            Files.delete(Path.of(filename));
-                            Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
+            delete.setOnAction(event -> {
+            if(clientView.isFocused()){
+                String name = clientView.getSelectionModel().getSelectedItem();
+                Path filePath = Path.of(String.valueOf(Paths.get(currentDirectory, name))).normalize();
+                if(name != null){
+                    try{
+                        if (!Files.isDirectory(filePath)){
+                            Files.delete(filePath);
+                        }else if (Files.isDirectory(filePath)){
+                            Path pathNew = filePath.getParent();
+                                FileUtils.deleteDirectory(filePath.toFile());
+                                currentDirectory = pathNew.toString();
                         }
+                    }catch (IOException e){
+                        e.printStackTrace();
+                    }finally {
+                        Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
                     }
                 }
-                if(serverView.isFocused()){
-                    String deleteFileOnServerName = serverView.getSelectionModel().getSelectedItem();
-                    if(deleteFileOnServerName != null){
-                        try {
-                            network.getOutputStream().writeObject(new DeleteRequest(deleteFileOnServerName));
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
+            }
+            if(serverView.isFocused()){
+                String deleteFileOnServerName = serverView.getSelectionModel().getSelectedItem();
+                if(deleteFileOnServerName != null){
+                    try {
+                        network.getOutputStream().writeObject(new DeleteRequest(deleteFileOnServerName));
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
                 }
             }
         });
-        MenuItem rename = new MenuItem("rename");
-        rename.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                if(clientView.isFocused()){
-                    String name = clientView.getSelectionModel().getSelectedItem();
-                    if(name != null){
-                        String filename = String.valueOf(Paths.get(currentDirectory,name));
-                                /*String filename = currentDirectory+"/"+ name;*/
-                        renameTextField.setVisible(true);
-                        renameFileOnClientButton.setVisible(true);
-                        oldNameTextField.setVisible(true);
+        MenuItem rename = new MenuItem("rename/move");
+            rename.setOnAction(event -> {
+            if(clientView.isFocused()){
+                String name = clientView.getSelectionModel().getSelectedItem();
+                if(name != null){
+                    renameTextField.setVisible(true);
+                    renameFileOnClientButton.setVisible(true);
+                    oldNameTextField.setVisible(true);
 
-                        oldNameTextField.setText(name);
-                        renameTextField.setText(name);
-                    }
+                    oldNameTextField.setText(name);
+                    renameTextField.setText(name);
                 }
-                if(serverView.isFocused()){
-                    String moveFileOnServerName = serverView.getSelectionModel().getSelectedItem();
-                    if(moveFileOnServerName != null){
-                        renameTextField.setVisible(true);
-                        oldNameTextField.setVisible(true);
-                        renameFileOnServerButton.setVisible(true);
-
-                        oldNameTextField.setText(moveFileOnServerName);
-                        renameTextField.setText(moveFileOnServerName);
-
-                    }
+            }
+            if(serverView.isFocused()){
+                String moveFileOnServerName = serverView.getSelectionModel().getSelectedItem();
+                if(moveFileOnServerName != null){
+                    renameTextField.setVisible(true);
+                    oldNameTextField.setVisible(true);
+                    renameFileOnServerButton.setVisible(true);
+                    oldNameTextField.setText(moveFileOnServerName);
+                    renameTextField.setText(moveFileOnServerName);
                 }
             }
         });
+        MenuItem cut = new MenuItem("cut");
+            cut.setOnAction(event -> {
+                if(clientView.isFocused()){
+                    cuttingItem = (Paths.get(currentDirectory,
+                            clientView.getSelectionModel().getSelectedItem())).toString();
+                    cuttingItemFilename = clientView.getSelectionModel().getSelectedItem();
+                }
+                if (serverView.isFocused()){
+                    try {
+                        network.getOutputStream().writeObject(new CutRequest(serverView.getSelectionModel().getSelectedItem()));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+        });
+        MenuItem paste = new MenuItem("paste");
+            paste.setOnAction(event -> {
+                if(clientView.isFocused()){
+                    if(cuttingItem != null){
+                        Path destination = Paths.get(currentDirectory,cuttingItemFilename);
+                        if(!Files.isDirectory(Path.of(cuttingItem))){
+                            try {
+                                Files.move( Paths.get(cuttingItem),destination);
+                            }catch (IOException e){
+                                e.printStackTrace();
+                            } finally {
+                                cuttingItem = null;
+                                cuttingItemFilename = null;
+                                Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
+                            }
+                        } else if (Files.isDirectory(Path.of(cuttingItem))) {
+                            try {
+                                File srcDir = new File(cuttingItem);
+                                File destDir = new File(currentDirectory);
+                                FileUtils.copyDirectory(srcDir, destDir);
+                                FileUtils.deleteDirectory(srcDir);
+                            } catch (IOException  exception) {
+                                exception.printStackTrace();
+                            }finally {
+                                cuttingItem = null;
+                                cuttingItemFilename = null;
+                                Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
+                            }
+                        }
 
-        contextMenu.getItems().addAll(createDirectory,delete,rename);
+                    }
+                }
+                if (serverView.isFocused()){
+                    try {
+                        network.getOutputStream().writeObject(new PasteRequest());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+
+        });
+        //Начальное добавление элементов
+        contextMenu.getItems().addAll(createDirectory,cut,paste,rename,delete);
         clientView.setContextMenu(contextMenu);
         serverView.setContextMenu(contextMenu);
         //-------------------------------------------------------
+    }
+
+    private void openRegistrationWindow() {
+        Stage window = new Stage();
+        window.initModality(Modality.APPLICATION_MODAL);
+        window.setOnCloseRequest(e -> System.exit(0));
+        Pane pane = new Pane();
+
+        TextField login = new TextField();
+        login.setMaxWidth(200);
+        login.setPromptText("Login");
+        login.setFocusTraversable(false);
+
+        TextField password = new TextField();
+        password.setMaxWidth(200);
+        password.setPromptText("Password");
+        password.setFocusTraversable(false);
+
+        Button confirmBtn = new Button("Confirm");
+        confirmBtn.setMinSize(200,30);
+        confirmBtn.setFocusTraversable(false);
+        confirmBtn.setBackground(Background.fill(Color.CADETBLUE));
+
+        Button addNewUserBtn = new Button("Add new User");
+        addNewUserBtn.setMinSize(200,30);
+        addNewUserBtn.setFocusTraversable(false);
+
+        confirmBtn.setOnAction(event -> {
+
+            if(login.getText().isBlank() | password.getText().isBlank()){
+                infoLabel.setText("Поля не заполнены!");
+            }else{
+                Authentication auth = new Authentication(login.getText(),password.getText());
+                try {
+                    network.getOutputStream().writeObject(auth);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                this.login = login.getText();
+                window.close();
+            }
+        });
+        addNewUserBtn.setOnAction(event -> {
+            if(login.getText().isBlank() | password.getText().isBlank()){
+                infoLabel.setText("Поля не заполнены!");
+            }else{
+                CreateUserRequest cur = new CreateUserRequest(login.getText(),password.getText());
+                try {
+                    network.getOutputStream().writeObject(cur);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                window.close();
+            }
+        });
+
+        VBox dataBox = new VBox(infoLabel
+                                    ,login
+                                    ,password
+                                    ,confirmBtn
+                                    ,addNewUserBtn);
+        dataBox.setPadding(new Insets(5,5,5,5));
+        pane.getChildren().add(dataBox);
+        Scene scene = new Scene(pane,212,150);
+
+        window.setScene(scene);
+        window.setTitle("Регистрация");
+        window.setResizable(false);
+        window.showAndWait();
+
     }
 
     private void createDirectoryOnServer() {
@@ -303,12 +438,12 @@ public class CloudMainController implements Initializable {
                             .build();
                     network.getOutputStream().writeObject(fm);
                 }
-            //если размер превышает FILE_PACK_SIZE
             }else{
+                //если размер превышает FILE_PACK_SIZE
                 Thread thread = new Thread(() -> {
-                    //страховка
-                    writeToServerButton.setDisable(true);
-                    downloadFromServerButton.setDisable(true);
+                    lock.lock();
+                    /*writeToServerButton.setDisable(true);
+                    downloadFromServerButton.setDisable(true);*/
                     try(FileInputStream fis = new FileInputStream(file)) {
                         byte[] buffer = new byte[Constants.FILE_PACK_SIZE];
                         long packages = (long) Math.ceil((double) size / Constants.FILE_PACK_SIZE);
@@ -326,11 +461,17 @@ public class CloudMainController implements Initializable {
                             partCount--;
                         }
                     } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        e.printStackTrace();
+                        Alert alert = new Alert(Alert.AlertType.ERROR,
+                                "Ошибка отправки данных на сервер!",
+                                ButtonType.OK);
+                        alert.showAndWait();
+                        System.exit(0);
                     }finally {
                         //страховка
-                        writeToServerButton.setDisable(false);
-                        downloadFromServerButton.setDisable(false);
+                        /*writeToServerButton.setDisable(false);
+                        downloadFromServerButton.setDisable(false);*/
+                        lock.unlock();
                     }
                 });
                 thread.setDaemon(true);
@@ -344,23 +485,30 @@ public class CloudMainController implements Initializable {
         try {
             while (needReadMessages) {
                 CloudMessage message = (CloudMessage) network.getInputStream().readObject();
+            //Приёмка файлов
                 if (message instanceof FileMessage fileMessage) {
                     //чтение fileMessage
                     readFileMessage(fileMessage);
                     //Обновление списка файлов
                     Platform.runLater(() -> fillView(clientView, getFilesListOnClient(currentDirectory)));
+            //Список файлов
                 } else if (message instanceof ListMessage listMessage) {
                     //показывает файлы сервера
                     Platform.runLater(() -> fillView(serverView, listMessage.getFiles()));
-                } else if (message instanceof ButtonBlocks buttonBlocks){
-                    if(buttonBlocks.isDoBlockTheButton()){
-                        writeToServerButton.setDisable(true);
-                        downloadFromServerButton.setDisable(true);
-                    }else {
-                        writeToServerButton.setDisable(false);
-                        downloadFromServerButton.setDisable(false);
-                    }
+            //Ошибка при регистрации
+                } else if(message instanceof AuthError){
+                    Platform.runLater(this::openRegistrationWindow);
+                    infoLabel.setText("Логин занят или не существует!");
+            //пользователь уже есть в базе
+                } else if (message instanceof UserExistError) {
+                    Platform.runLater(this::openRegistrationWindow);
+                    infoLabel.setText("Логин занят!");
+            //подтверждение создания пользователя
+                } else if (message instanceof AcceptUser au) {
+                    Platform.runLater(this::openRegistrationWindow);
+
                 }
+
             }
         } catch (Exception e) {
             System.err.println("Server off");
@@ -380,7 +528,6 @@ public class CloudMainController implements Initializable {
         }else {
             //поток организовать
             File file = Paths.get(currentDirectory,fileMessage.getFileName()).toFile();
-            /*File file = new File(currentDirectory+"/"+fileMessage.getFileName());*/
             if(!file.exists()){
                 file.createNewFile();
             }
@@ -392,6 +539,16 @@ public class CloudMainController implements Initializable {
                     }
             }
         }
+
+    public void deleteThisAccount(ActionEvent actionEvent) {
+        try {
+            network.getOutputStream().writeObject(new DeleteUserRequest(login));
+            System.out.println(login +"to delete!");
+            openRegistrationWindow();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
 
 
