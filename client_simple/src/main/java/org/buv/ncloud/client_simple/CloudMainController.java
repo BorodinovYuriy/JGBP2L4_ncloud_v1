@@ -29,10 +29,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.ResourceBundle;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -49,6 +46,7 @@ public class CloudMainController implements Initializable {
     public TextField oldNameTextField;
     public Button renameFileOnServerButton;
     public MenuItem deleteAccount;
+    public ProgressBar progressBar;
     private String currentDirectory;
     //--------------------
     private String login;
@@ -81,6 +79,22 @@ public class CloudMainController implements Initializable {
             }
         }
         return List.of();
+    }
+    private void makeProgress() {
+        progress(progressBar);
+    }
+    private void progress(ProgressBar p){
+        //1%
+        double value = p.getProgress();
+        if(value < 0){
+            value = 0.01;
+        }else{
+            value = value + 0.01;
+            if(value >= 1.0){
+                value = 1.0;
+            }
+        }
+        p.setProgress(value);
     }
 
     private void initNetwork() {
@@ -133,6 +147,9 @@ public class CloudMainController implements Initializable {
         initNetwork();
         setCurrentDirectory(System.getProperty("user.home"));
         fillView(clientView, getFilesListOnClient(currentDirectory));
+        //--------ProcessBar-----------//
+        progressBar.setProgress(0);
+        //--------ProcessBar-----------//
         //Ивенты мыши на serverView!!!
         clientView.setOnMouseClicked(event -> {
             if (event.getClickCount() == 2) {
@@ -421,65 +438,77 @@ public class CloudMainController implements Initializable {
             oldNameTextField.setVisible(false);
     }
 
-    public void writeFileToServer(ActionEvent actionEvent) throws IOException {
+    public void writeToServer(ActionEvent actionEvent) throws IOException {
         String fileName = clientView.getSelectionModel().getSelectedItem();
         long size = Files.size((Path.of(currentDirectory,fileName)));
         File file = Paths.get(currentDirectory,fileName).toFile();
-        /*File file = new File(currentDirectory + "/" + fileName);*/
-        if(file.exists() && file.isFile()){
-            //если размер не превышает FILE_PACK_SIZE
-            if (size <= Constants.FILE_PACK_SIZE){
-                try (FileInputStream fis = new FileInputStream(file)){
-                    FileMessage fm = FileMessage.builder()
-                            .multipart(false)
-                            .fileName(fileName)
-                            .bytes(fis.readAllBytes())
-                            .size(size)
-                            .build();
-                    network.getOutputStream().writeObject(fm);
-                }
-            }else{
-                //если размер превышает FILE_PACK_SIZE
-                Thread thread = new Thread(() -> {
-                    lock.lock();
-                    /*writeToServerButton.setDisable(true);
-                    downloadFromServerButton.setDisable(true);*/
-                    try(FileInputStream fis = new FileInputStream(file)) {
-                        byte[] buffer = new byte[Constants.FILE_PACK_SIZE];
-                        long packages = (long) Math.ceil((double) size / Constants.FILE_PACK_SIZE);
-                        long partCount = packages - 1;
-                        int readBytes;
-                        while ((readBytes = fis.read(buffer)) != -1){
-                            FileMessage fileMessage = FileMessage.builder()
-                                    .multipart(true)
-                                    .fileName(fileName)
-                                    .bytes(Arrays.copyOf(buffer, readBytes))
-                                    .size(readBytes)
-                                    .build();
-                            network.getOutputStream().writeObject(fileMessage);
-                            System.out.println("send pack: "+partCount+" "+fileName);
-                            partCount--;
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        Alert alert = new Alert(Alert.AlertType.ERROR,
-                                "Ошибка отправки данных на сервер!",
-                                ButtonType.OK);
-                        alert.showAndWait();
-                        System.exit(0);
-                    }finally {
-                        //страховка
-                        /*writeToServerButton.setDisable(false);
-                        downloadFromServerButton.setDisable(false);*/
-                        lock.unlock();
-                    }
-                });
-                thread.setDaemon(true);
-                thread.start();
 
+        if(file.exists() && file.isFile()){
+            writeFileToServer(fileName,size,file);
+        }
+        if(file.isDirectory()){
+            writeDirectoryToServer(fileName);
+        }
+
+    }
+    private void writeFileToServer(String fileName, long size, File file){
+
+        //если размер не превышает FILE_PACK_SIZE
+        if (size <= Constants.FILE_PACK_SIZE){
+            try (FileInputStream fis = new FileInputStream(file)){
+                FileMessage fm = FileMessage.builder()
+                        .multipart(false)
+                        .fileName(fileName)
+                        .bytes(fis.readAllBytes())
+                        .size(size)
+                        .build();
+                network.getOutputStream().writeObject(fm);
+            }catch (IOException  e){
+                e.printStackTrace();
             }
+        }else{
+            //если размер превышает FILE_PACK_SIZE
+            Thread thread = new Thread(() -> {
+                lock.lock();
+                progressBar.setProgress(0);
+                try(FileInputStream fis = new FileInputStream(file)) {
+                    byte[] buffer = new byte[Constants.FILE_PACK_SIZE];
+                    long packages = (long) Math.ceil((double) size / Constants.FILE_PACK_SIZE);
+
+                    long part = (long) (Math.ceil(packages)/100);
+                    long count = 0;
+                    int readBytes;
+                    while ((readBytes = fis.read(buffer)) != -1){
+                        FileMessage fileMessage = FileMessage.builder()
+                                .multipart(true)
+                                .fileName(fileName)
+                                .bytes(Arrays.copyOf(buffer, readBytes))
+                                .size(readBytes)
+                                .build();
+                        network.getOutputStream().writeObject(fileMessage);
+                        //добавление прогресса
+                        count++;
+                        if(count == part){
+                            count = 0;
+                            makeProgress();
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }finally {
+                    progressBar.setProgress(0);
+                    lock.unlock();
+                }
+            });
+            thread.setDaemon(true);
+            thread.start();
         }
     }
+
+    private void writeDirectoryToServer(String dirName) {
+        //Пока не реализовано!!!!
+    }
+
     //Прием сообщений с сервера................................
     private void readMessages() {
         try {
@@ -499,14 +528,16 @@ public class CloudMainController implements Initializable {
                 } else if(message instanceof AuthError){
                     Platform.runLater(this::openRegistrationWindow);
                     infoLabel.setText("Логин занят или не существует!");
-            //пользователь уже есть в базе
+            //Пользователь уже есть в базе
                 } else if (message instanceof UserExistError) {
                     Platform.runLater(this::openRegistrationWindow);
                     infoLabel.setText("Логин занят!");
-            //подтверждение создания пользователя
+            //Подтверждение создания пользователя
                 } else if (message instanceof AcceptUser au) {
                     Platform.runLater(this::openRegistrationWindow);
-
+            //Сброс прогресса
+                } else if (message instanceof ProgressReset) {
+                    progressBar.setProgress(0);
                 }
 
             }
@@ -517,7 +548,7 @@ public class CloudMainController implements Initializable {
     }
 
     private void readFileMessage(FileMessage fileMessage) throws IOException {
-        //переписать в общий метод
+        //Не превышает буфер
         if(!fileMessage.isMultipart()){
             try {
                 Files.write(Path.of(currentDirectory).resolve(fileMessage.getFileName()), fileMessage.getBytes());
@@ -526,13 +557,16 @@ public class CloudMainController implements Initializable {
                 e.printStackTrace();
             }
         }else {
-            //поток организовать
+        //Превышает буфер
             File file = Paths.get(currentDirectory,fileMessage.getFileName()).toFile();
             if(!file.exists()){
                 file.createNewFile();
             }
                     try {
                         Files.write(file.toPath(), fileMessage.getBytes(), APPEND);
+                        if(fileMessage.isDoProgress()){
+                            makeProgress();
+                        }
                     } catch (IOException e) {
                         System.out.println("Download from server (big file) error");
                         e.printStackTrace();

@@ -16,7 +16,8 @@ public enum MessageType {
     USER_EXIST_ERROR,
     DELETE_USER,
     CUT_REQUEST,
-    PASTE_REQUEST
+    PASTE_REQUEST,
+    PROGRESS_RESET
 
 
 

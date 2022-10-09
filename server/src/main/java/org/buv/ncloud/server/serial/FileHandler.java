@@ -195,7 +195,7 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
 
     private void fileRequestResponse(ChannelHandlerContext ctx, FileRequest fileRequest) throws IOException {
         File file = userDir.resolve(fileRequest.getFileName()).toFile();
-        if(file.exists()){
+        if(file.exists() && file.isFile()){
                 long size = Files.size(userDir.resolve(fileRequest.getFileName()));
             //если размер не превышает FILE_PACK_SIZE
             if (size <= Constants.FILE_PACK_SIZE) {
@@ -205,6 +205,7 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
                             .fileName(fileRequest.getFileName())
                             .bytes(fis.readAllBytes())
                             .size(size)
+                            .doProgress(false)
                             .build();
                     System.out.println(fm.getFileName()+" "+fm.getSize()+" -byte[]size_ simple send");
                     ctx.writeAndFlush(fm);
@@ -215,36 +216,54 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
                 //если размер превышает FILE_PACK_SIZE
                 Thread thread = new Thread(() -> {
                     lock.lock();
-                    /*ButtonBlocks buttonBlocksTrue = new ButtonBlocks(true);
-                    ctx.writeAndFlush(buttonBlocksTrue);*/
                     try(FileInputStream fis = new FileInputStream(file)) {
                         byte[] buffer = new byte[Constants.FILE_PACK_SIZE];
                         long packages = (long) Math.ceil((double) size / Constants.FILE_PACK_SIZE);
                         long partCount = packages - 1;
+                        //ProgressBarVar
+                        long part = (long) (Math.ceil(packages)/100);
+                        long count = 0;
+
                         int readBytes;
                         while ((readBytes = fis.read(buffer)) != -1){
-                            FileMessage fileMessage = FileMessage.builder()
-                                    .multipart(true)
-                                    .fileName(fileRequest.getFileName())
-                                    .bytes(Arrays.copyOf(buffer, readBytes))
-                                    .size(readBytes)
-                                    .build();
-                            ctx.writeAndFlush(fileMessage);
-                            System.out.println("send pack: "+partCount+" "+fileRequest.getFileName());
+                            if(count == part){
+                                count = 0;
+                                FileMessage fileMessage = FileMessage.builder()
+                                        .multipart(true)
+                                        .fileName(fileRequest.getFileName())
+                                        .bytes(Arrays.copyOf(buffer, readBytes))
+                                        .size(readBytes)
+                                        .doProgress(true)
+                                        .build();
+                                ctx.writeAndFlush(fileMessage);
+
+                            }else {
+                                FileMessage fileMessage = FileMessage.builder()
+                                        .multipart(true)
+                                        .fileName(fileRequest.getFileName())
+                                        .bytes(Arrays.copyOf(buffer, readBytes))
+                                        .size(readBytes)
+                                        .doProgress(false)
+                                        .build();
+                                ctx.writeAndFlush(fileMessage);
+                            }
                             partCount--;
+                            count++;
                         }
                    } catch (IOException e) {
                         e.printStackTrace();
                         log.debug("fileRequestResponse error");
                     }finally {
+                        ctx.writeAndFlush(new ProgressReset());
                         lock.unlock();
-                        /*ButtonBlocks buttonBlocksFalse = new ButtonBlocks(false);
-                        ctx.writeAndFlush(buttonBlocksFalse);*/
                     }
                 });
                 thread.setDaemon(true);
                 thread.start();
                 }
+        }
+        if(file.isDirectory()){
+            //Функционал не реализован
         }
     }
     private void deleteFolder(Path path) {
