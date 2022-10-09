@@ -18,7 +18,7 @@ import static java.nio.file.StandardOpenOption.APPEND;
 public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
 
     private Path serverDir;
-    private Path stop = Path.of("server_files/..");
+    private Path stop = Path.of("server_files/..");//Организовать под каждого юзера
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
@@ -30,21 +30,20 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, CloudMessage cloudMessage) throws Exception {
         log.debug("Received: {}", cloudMessage.getType());
-
     //FILE_MESSAGE (заливка)
         if (cloudMessage instanceof FileMessage fileMessage) {
             saveFileFromUser(fileMessage);
-
             //обновили лист сервера
             ctx.writeAndFlush(new ListMessage(serverDir));
     //FILE_REQUEST (скачивание)
         } else if (cloudMessage instanceof FileRequest fileRequest) {
             fileRequestResponse(ctx, fileRequest);
-            System.out.println("fileRequest: " + fileRequest);
+            /*System.out.println("fileRequest: " + fileRequest);*/
     //LIST_REQUEST (UPDATE_SERVER_VIEW) -> LIST_MESSAGE
         } else if (cloudMessage instanceof ListRequest listRequest) {
             String selected = listRequest.getSelectedItem();
-            Path path = Paths.get(serverDir + "/" + selected).normalize();
+            Path path = Paths.get(String.valueOf(serverDir),selected).normalize();
+            /*Path path = Paths.get(serverDir + "/" + selected).normalize();*/
             if(path.toFile().isDirectory()){
                 if(path != stop){
                     serverDir = path;
@@ -53,7 +52,8 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
             }
     //DELETE_REQUEST
         } else if (cloudMessage instanceof DeleteRequest deleteRequest) {
-            String filename = serverDir+"/"+ deleteRequest.getFileToDeleteName();
+            String filename = String.valueOf(Paths.get(String.valueOf((serverDir)),deleteRequest.getFileToDeleteName()));
+            /*String filename = serverDir+"/"+ deleteRequest.getFileToDeleteName();*/
             try {
                 Files.delete(Path.of(filename));
                 ctx.writeAndFlush(new ListMessage(serverDir));
@@ -68,15 +68,40 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
             System.out.println(destination);
             if(source != null && destination != null){
                 try{
-
-                    Files.move(Path.of(serverDir + "/" + source)
-                            , Path.of(serverDir + "/" + destination));
+                    Files.move(Paths.get(String.valueOf(serverDir),source)
+                            ,Paths.get(String.valueOf(serverDir), destination));
+                    /*Files.move(Path.of(serverDir + "/" + source)
+                            , Path.of(serverDir + "/" + destination));*/
                 }catch (IOException e){
                     e.printStackTrace();
                 }
                 ctx.writeAndFlush(new ListMessage(serverDir));
             }else System.out.println("null in moveRequest !");
+    //CREATE_DIRECTORY
+        } else if (cloudMessage instanceof CreateDirOnServerRequest cdosr) {
+            createDirectoryOnServer();
+            ctx.writeAndFlush(new ListMessage(serverDir));
+        }
 
+    }
+
+    private void createDirectoryOnServer() {
+        //потом объединить в общий
+        try {
+            File file = Paths.get(String.valueOf(serverDir),"newDir").toFile();
+            if(!file.exists()){
+                Files.createDirectory(file.toPath());
+            }else {
+                for (int i = 0; i < 10000; i++){
+                    File dir = Paths.get(String.valueOf(serverDir),"newDir"+i).toFile();
+                    if (!dir.exists()){
+                        Files.createDirectory(dir.toPath());
+                        break;
+                    }
+                }
+            }
+        }catch (IOException e){
+            e.printStackTrace();
         }
     }
 
@@ -91,7 +116,8 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
             }
         }else {
             //тут страховку и поток организовать
-            File file = new File(serverDir+"/"+fileMessage.getFileName());
+            File file = Paths.get(String.valueOf(serverDir),fileMessage.getFileName()).toFile();
+            /*File file = new File(serverDir+"/"+fileMessage.getFileName());*/
             if(!file.exists()){
                 file.createNewFile();
             }
@@ -126,6 +152,8 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
             }else {
             //если размер превышает FILE_PACK_SIZE
                 Thread thread = new Thread(() -> {
+                    ButtonBlocks buttonBlocksTrue = new ButtonBlocks(true);
+                    ctx.writeAndFlush(buttonBlocksTrue);
                     try(FileInputStream fis = new FileInputStream(file)) {
                         byte[] buffer = new byte[Constants.FILE_PACK_SIZE];
                         long packages = (long) Math.ceil((double) size / Constants.FILE_PACK_SIZE);
@@ -144,6 +172,9 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
                         }
                    } catch (IOException e) {
                         throw new RuntimeException(e);
+                    }finally {
+                        ButtonBlocks buttonBlocksFalse = new ButtonBlocks(false);
+                        ctx.writeAndFlush(buttonBlocksFalse);
                     }
                 });
                 thread.setDaemon(true);
@@ -151,14 +182,6 @@ public class FileHandler extends SimpleChannelInboundHandler<CloudMessage> {
                 }
         }
     }
-
-
-
-
-
-
-
-
 
 //end
 }

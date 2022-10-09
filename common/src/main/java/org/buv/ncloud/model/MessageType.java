@@ -6,7 +6,9 @@ public enum MessageType {
     FILE_MESSAGE,
     UPDATE_SERVER_VIEW,
     DELETE_REQUEST,
-    MOVE_REQUEST
+    MOVE_REQUEST,
+    BLOCK_BUTTON,
+    CREATE_DIRECTORY
 
 
 }
