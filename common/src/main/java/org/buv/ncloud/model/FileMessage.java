@@ -11,6 +11,7 @@ public class FileMessage implements CloudMessage {
     private final long size;
     private final byte[] bytes;
     private boolean multipart;
+    private boolean doProgress;
 
     @Override
     public MessageType getType() {

@@ -16,10 +16,10 @@ public class CloudClient extends Application {
         stage.setTitle("Cloud client!");
         stage.setScene(scene);
         stage.show();
-
     }
 
     public static void main(String[] args) {
         launch();
+
     }
 }
