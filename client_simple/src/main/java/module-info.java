@@ -6,9 +6,6 @@ module org.buv.ncloud.client_simple {
     requires lombok;
     requires io.netty.codec;
     requires org.apache.commons.io;
-    requires slf4j.api;
-
-
 
 
     opens org.buv.ncloud.client_simple to javafx.fxml;

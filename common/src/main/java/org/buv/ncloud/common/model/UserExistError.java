@@ -1,4 +1,4 @@
-package org.buv.ncloud.model;
+package org.buv.ncloud.common.model;
 
 public class UserExistError implements CloudMessage{
     @Override

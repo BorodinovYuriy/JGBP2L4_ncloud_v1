@@ -1,8 +1,7 @@
 module org.buv.ncloud.common {
     requires lombok;
-    requires io.netty.transport;
 
-    exports org.buv.ncloud.model;
-    exports org.buv.ncloud.utils;
-    exports org.buv.ncloud.constant;
+    exports org.buv.ncloud.common.utils;
+    exports org.buv.ncloud.common.model;
+    exports org.buv.ncloud.common.constant;
 }
