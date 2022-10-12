@@ -10,18 +10,56 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>server</artifactId>
-
     <properties>
         <maven.compiler.source>18</maven.compiler.source>
         <maven.compiler.target>18</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.buv.ncloud</groupId>
             <artifactId>common</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+
+
+
+
     </dependencies>
+    <!--для правильной компиляции-->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.2.0</version>
+                <!--с запуском плагина пэкэдж запускается эта задача-->
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <!--задачу сделать один раз на фазе пэкэдж-->
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>netty-server</finalName>
+                            <descriptorRefs>
+                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                            </descriptorRefs>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <!--внутрь архива пишем мэинКласс-->
+                            <archive>
+                                <manifest>
+                                    <mainClass>org.buv.ncloud.server.FileServer</mainClass>
+                                </manifest>
+                            </archive>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

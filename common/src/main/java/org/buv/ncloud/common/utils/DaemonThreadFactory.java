@@ -1,4 +1,4 @@
-package org.buv.ncloud.utils;
+package org.buv.ncloud.common.utils;
 
 import java.util.concurrent.ThreadFactory;
 

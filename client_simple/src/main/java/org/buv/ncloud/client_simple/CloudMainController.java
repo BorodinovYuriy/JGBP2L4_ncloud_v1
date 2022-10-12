@@ -15,11 +15,11 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
-import lombok.extern.slf4j.Slf4j;
+/*import lombok.extern.slf4j.Slf4j;*/
 import org.apache.commons.io.FileUtils;
-import org.buv.ncloud.constant.Constants;
-import org.buv.ncloud.model.*;
-import org.buv.ncloud.utils.DaemonThreadFactory;
+import org.buv.ncloud.common.constant.Constants;
+import org.buv.ncloud.common.model.*;
+import org.buv.ncloud.common.utils.DaemonThreadFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -34,7 +34,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static java.nio.file.StandardOpenOption.APPEND;
-@Slf4j
+/*@Slf4j*/
 public class CloudMainController implements Initializable {
     public ListView<String> clientView;
     public ListView<String> serverView;
@@ -142,7 +142,7 @@ public class CloudMainController implements Initializable {
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
         needReadMessages = true;
-        //DaemonThreadFactory utils common
+        //DaemonThreadFactory utils ncloud
         factory = new DaemonThreadFactory();//используется в initNetwork
         initNetwork();
         setCurrentDirectory(System.getProperty("user.home"));
